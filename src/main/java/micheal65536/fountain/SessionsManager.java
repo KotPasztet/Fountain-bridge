@@ -21,6 +21,7 @@ import org.cloudburstmc.protocol.bedrock.codec.v425_genoa.Bedrock_v425_Genoa;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacketHandler;
 import org.cloudburstmc.protocol.bedrock.packet.GenoaDisconnectIdPacket;
+import org.cloudburstmc.protocol.bedrock.packet.GenoaUpdateBlockPacket;
 import org.cloudburstmc.protocol.bedrock.packet.LevelSoundEventPacket;
 import org.cloudburstmc.protocol.bedrock.packet.LoginPacket;
 import org.cloudburstmc.protocol.bedrock.packet.MapCreateLockedCopyPacket;
@@ -35,6 +36,7 @@ import micheal65536.fountain.connector.plugin.ConnectorPlugin;
 import micheal65536.fountain.connector.plugin.PlayerLoginInfo;
 import micheal65536.fountain.connector.plugin.ResourceLocation;
 import micheal65536.fountain.utils.GenoaDisconnectIdSerializer;
+import micheal65536.fountain.utils.GenoaUpdateBlockDamageSerializer;
 import micheal65536.fountain.utils.LoginUtils;
 import micheal65536.fountain.utils.TolerantLevelSoundEventSerializer;
 
@@ -57,6 +59,7 @@ public class SessionsManager
 			.deregisterPacket(MapCreateLockedCopyPacket.class)
 			.updateSerializer(GenoaDisconnectIdPacket.class, GenoaDisconnectIdSerializer.INSTANCE)
 			.updateSerializer(LevelSoundEventPacket.class, TolerantLevelSoundEventSerializer.from(Bedrock_v425_Genoa.CODEC))
+			.updateSerializer(GenoaUpdateBlockPacket.class, GenoaUpdateBlockDamageSerializer.INSTANCE)
 			.build();
 
 	private final String serverAddress;

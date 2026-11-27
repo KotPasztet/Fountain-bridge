@@ -176,7 +176,7 @@ public final class ServerPacketHandler extends SessionAdapter
 
 			else if (packet instanceof ClientboundBlockDestructionPacket)
 			{
-				// TODO: figure out block damage stuff for GenoaUpdateBlockPacket
+				this.playerSession.onJavaBlockDestruction(((ClientboundBlockDestructionPacket) packet).getPosition(), ((ClientboundBlockDestructionPacket) packet).getStage());
 			}
 
 			else if (packet instanceof ClientboundPlayerPositionPacket)

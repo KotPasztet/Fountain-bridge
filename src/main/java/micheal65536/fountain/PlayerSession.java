@@ -10,6 +10,7 @@ import com.github.steveice10.mc.protocol.data.game.entity.metadata.Equipment;
 import com.github.steveice10.mc.protocol.data.game.entity.metadata.ItemStack;
 import com.github.steveice10.mc.protocol.data.game.entity.object.Direction;
 import com.github.steveice10.mc.protocol.data.game.entity.player.Animation;
+import com.github.steveice10.mc.protocol.data.game.entity.player.BlockBreakStage;
 import com.github.steveice10.mc.protocol.data.game.entity.player.GameMode;
 import com.github.steveice10.mc.protocol.data.game.entity.player.Hand;
 import com.github.steveice10.mc.protocol.data.game.entity.player.HandPreference;
@@ -67,6 +68,7 @@ import org.cloudburstmc.protocol.bedrock.packet.AvailableEntityIdentifiersPacket
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ChunkRadiusUpdatedPacket;
 import org.cloudburstmc.protocol.bedrock.packet.GameRulesChangedPacket;
+import org.cloudburstmc.protocol.bedrock.packet.GenoaUpdateBlockPacket;
 import org.cloudburstmc.protocol.bedrock.packet.GenoaDisconnectIdPacket;
 import org.cloudburstmc.protocol.bedrock.packet.GenoaDisconnectStartPacket;
 import org.cloudburstmc.protocol.bedrock.packet.GenoaGameplaySettingsPacket;
@@ -89,6 +91,7 @@ import micheal65536.fountain.connector.plugin.ConnectorPlugin;
 import micheal65536.fountain.connector.plugin.DisconnectResponse;
 import micheal65536.fountain.connector.plugin.ResourceLocation;
 import micheal65536.fountain.registry.BedrockBlocks;
+import micheal65536.fountain.registry.BlockBreakingHealth;
 import micheal65536.fountain.registry.EarthEntitiesRegistry;
 import micheal65536.fountain.registry.JavaItems;
 import micheal65536.fountain.utils.ChunkManager;
@@ -105,7 +108,9 @@ import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
@@ -140,6 +145,7 @@ public final class PlayerSession
 	private boolean disconnected = false;
 	private boolean disconnecting = false;
 	private boolean disconnectIdSent = false;
+	private final Set<Vector3i> damagedBlocks = ConcurrentHashMap.newKeySet();
 
 	// V2 instance/dimension routing
 	private String instanceId;
@@ -826,11 +832,53 @@ public final class PlayerSession
 			{
 				this.sendItemParticle(item.getDefinition().getRuntimeId(), item.getDamage(), collectedJavaEntityInstance.getPos(), this.javaPlayerEntityInstance.bedrockEntityInstance.getInstanceId());
 			}
+			this.effectManager.sendItemPickupSound(collectedJavaEntityInstance.getPos());
 		}
 		else
 		{
 			LogManager.getLogger().debug("Ignoring entity taken by non-player entity");
 		}
+	}
+
+	public void onJavaBlockDestruction(@NotNull Vector3i position, @NotNull BlockBreakStage stage)
+	{
+		if (stage == BlockBreakStage.RESET)
+		{
+			return;
+		}
+		int bedrockBlockId = this.chunkManager.getBedrockBlock(position);
+		if (bedrockBlockId == BedrockBlocks.AIR)
+		{
+			return;
+		}
+		int breakingHealth = BlockBreakingHealth.get(BedrockBlocks.getName(bedrockBlockId));
+		if (breakingHealth <= 0)
+		{
+			return;
+		}
+		float damage = Math.min((stage.ordinal() + 1) / 10.0f, 0.95f) * breakingHealth;
+		this.sendBlockDamage(position, bedrockBlockId, damage);
+		this.damagedBlocks.add(position);
+	}
+
+	public void onBlockChanged(@NotNull Vector3i position, int bedrockBlockId)
+	{
+		if (this.damagedBlocks.remove(position))
+		{
+			this.sendBlockDamage(position, bedrockBlockId, 0.0f);
+		}
+	}
+
+	private void sendBlockDamage(@NotNull Vector3i position, int bedrockBlockId, float damage)
+	{
+		GenoaUpdateBlockPacket genoaUpdateBlockPacket = new GenoaUpdateBlockPacket();
+		genoaUpdateBlockPacket.setBlockPosition(position);
+		genoaUpdateBlockPacket.setRuntimeId(bedrockBlockId);
+		genoaUpdateBlockPacket.getFlags().addAll(GenoaUpdateBlockPacket.FLAG_ALL);
+		genoaUpdateBlockPacket.setDataLayer(0);
+		genoaUpdateBlockPacket.setFloat1(damage);
+		genoaUpdateBlockPacket.setCheckForFloat(true);
+		this.sendBedrockPacket(genoaUpdateBlockPacket);
 	}
 
 	public void onJavaLevelEvent(@NotNull Vector3i position, @NotNull LevelEvent event, @NotNull LevelEventData eventData)

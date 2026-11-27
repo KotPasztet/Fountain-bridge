@@ -116,6 +116,11 @@ public class EffectManager
 		this.sendSoundEvent(SoundEvent.BREAK, "", -1, position);
 	}
 
+	public void sendItemPickupSound(@NotNull Vector3f position)
+	{
+		this.sendPlaySound("item.pickup", position, 1.0f, 1.0f);
+	}
+
 	public void sendBlockHit(@NotNull Vector3i blockPosition, int bedrockBlockId, int face)
 	{
 		Vector3f centre = blockPosition.toFloat().add(0.5f, 0.5f, 0.5f);
