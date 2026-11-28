@@ -27,6 +27,7 @@ import micheal65536.fountain.connector.ConnectorPluginLogger;
 import micheal65536.fountain.connector.DefaultConnectorPlugin;
 import micheal65536.fountain.connector.plugin.ConnectorPlugin;
 import micheal65536.fountain.connector.plugin.ResourceLocation;
+import micheal65536.fountain.utils.AdventureChestLoot;
 import micheal65536.fountain.mappings.DirectSounds;
 import micheal65536.fountain.registry.BedrockBiomes;
 import micheal65536.fountain.registry.BedrockBlocks;
@@ -194,6 +195,7 @@ public class Main
 
 		ConnectorPlugin connectorPlugin = loadConnectorPlugin(connectorPluginJarFilename, connectorPluginClassName, connectorPluginArg);
 		SessionsManager sessionsManager = new SessionsManager(serverAddress, serverPort, connectorPlugin, useUUIDAsUsername);
+		sessionsManager.setEventBusAddress(AdventureChestLoot.parseBusAddress(connectorPluginArg));
 
 		loadDimensionMappings(dimensionMappingsFile, sessionsManager, connectorPlugin);
 		Runtime.getRuntime().addShutdownHook(new Thread(() ->

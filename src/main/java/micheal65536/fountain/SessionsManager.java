@@ -21,6 +21,7 @@ import org.cloudburstmc.protocol.bedrock.codec.v425_genoa.Bedrock_v425_Genoa;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacketHandler;
 import org.cloudburstmc.protocol.bedrock.packet.GenoaDisconnectIdPacket;
+import org.cloudburstmc.protocol.bedrock.packet.GenoaItemAwardedNotificationPacket;
 import org.cloudburstmc.protocol.bedrock.packet.LevelSoundEventPacket;
 import org.cloudburstmc.protocol.bedrock.packet.LoginPacket;
 import org.cloudburstmc.protocol.bedrock.packet.MapCreateLockedCopyPacket;
@@ -35,6 +36,7 @@ import micheal65536.fountain.connector.plugin.ConnectorPlugin;
 import micheal65536.fountain.connector.plugin.PlayerLoginInfo;
 import micheal65536.fountain.connector.plugin.ResourceLocation;
 import micheal65536.fountain.utils.GenoaDisconnectIdSerializer;
+import micheal65536.fountain.utils.GenoaItemAwardedNotificationSerializer;
 import micheal65536.fountain.utils.LoginUtils;
 import micheal65536.fountain.utils.TolerantLevelSoundEventSerializer;
 
@@ -57,6 +59,7 @@ public class SessionsManager
 			.deregisterPacket(MapCreateLockedCopyPacket.class)
 			.updateSerializer(GenoaDisconnectIdPacket.class, GenoaDisconnectIdSerializer.INSTANCE)
 			.updateSerializer(LevelSoundEventPacket.class, TolerantLevelSoundEventSerializer.from(Bedrock_v425_Genoa.CODEC))
+			.updateSerializer(GenoaItemAwardedNotificationPacket.class, GenoaItemAwardedNotificationSerializer.INSTANCE)
 			.build();
 
 	private final String serverAddress;
@@ -74,6 +77,7 @@ public class SessionsManager
 	// V2 dimension/instance routing
 	private final HashMap<String, ResourceLocation> instanceIdToDimensionKey = new HashMap<>();
 	private final HashMap<String, String> playerUuidToInstanceId = new HashMap<>();
+	private String eventBusAddress = null;
 
 	public SessionsManager(@NotNull String serverAddress, int serverPort, @NotNull ConnectorPlugin connectorPlugin, boolean useUUIDAsUsername)
 	{
@@ -81,6 +85,11 @@ public class SessionsManager
 		this.serverPort = serverPort;
 		this.connectorPlugin = connectorPlugin;
 		this.useUUIDAsUsername = useUUIDAsUsername;
+	}
+
+	public void setEventBusAddress(@Nullable String eventBusAddress)
+	{
+		this.eventBusAddress = eventBusAddress;
 	}
 
 	public void newClientConnection(@NotNull BedrockServerSession bedrockServerSession)
@@ -233,6 +242,10 @@ public class SessionsManager
 
 		PlayerSession playerSession = new PlayerSession(loginBedrockPacketHandler.bedrockServerSession, tcpClientSession, new PlayerConnectorPluginWrapper(this.connectorPlugin, loginInfo.uuid), this::onSessionClosed);
 		playerSession.setAssignedDimension(dimensionKey, dimensionId);
+		if (this.eventBusAddress != null)
+		{
+			playerSession.followAdventureChestLoot(this.eventBusAddress, resolvedInstanceId, loginInfo.uuid);
+		}
 		this.activeSessions.add(new ActiveSession(loginInfo.uuid, resolvedInstanceId, playerSession, loginBedrockPacketHandler.bedrockServerSession));
 
 		playerSession.mutex.lock();

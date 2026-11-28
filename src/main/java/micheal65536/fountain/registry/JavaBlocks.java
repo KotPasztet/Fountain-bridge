@@ -193,6 +193,7 @@ public class JavaBlocks
 					blockEntity = new BedrockMapping.FlowerPotBlockEntity(type, contents);
 				}
 				break;
+				case "adventure_chest":
 				case "moving_block":
 				{
 					blockEntity = new BedrockMapping.BlockEntity(type);

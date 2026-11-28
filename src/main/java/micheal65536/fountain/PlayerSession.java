@@ -59,6 +59,8 @@ import org.cloudburstmc.protocol.bedrock.data.GamePublishSetting;
 import org.cloudburstmc.protocol.bedrock.data.GameRuleData;
 import org.cloudburstmc.protocol.bedrock.data.GameType;
 import org.cloudburstmc.protocol.bedrock.data.GenoaDisconnectItem1;
+import org.cloudburstmc.protocol.bedrock.data.GenoaDisconnectItem3;
+import org.cloudburstmc.protocol.bedrock.data.GenoaItemAwardedNotification;
 import org.cloudburstmc.protocol.bedrock.data.PlayerPermission;
 import org.cloudburstmc.protocol.bedrock.data.inventory.ItemData;
 import org.cloudburstmc.protocol.bedrock.data.inventory.transaction.InventoryTransactionType;
@@ -67,6 +69,8 @@ import org.cloudburstmc.protocol.bedrock.packet.AvailableEntityIdentifiersPacket
 import org.cloudburstmc.protocol.bedrock.packet.BedrockPacket;
 import org.cloudburstmc.protocol.bedrock.packet.ChunkRadiusUpdatedPacket;
 import org.cloudburstmc.protocol.bedrock.packet.GameRulesChangedPacket;
+import org.cloudburstmc.protocol.bedrock.packet.GenoaBlockDestroyPacket;
+import org.cloudburstmc.protocol.bedrock.packet.GenoaItemAwardedNotificationPacket;
 import org.cloudburstmc.protocol.bedrock.packet.GenoaDisconnectIdPacket;
 import org.cloudburstmc.protocol.bedrock.packet.GenoaDisconnectStartPacket;
 import org.cloudburstmc.protocol.bedrock.packet.GenoaGameplaySettingsPacket;
@@ -90,7 +94,10 @@ import micheal65536.fountain.connector.plugin.DisconnectResponse;
 import micheal65536.fountain.connector.plugin.ResourceLocation;
 import micheal65536.fountain.registry.BedrockBlocks;
 import micheal65536.fountain.registry.EarthEntitiesRegistry;
+import micheal65536.fountain.registry.EarthItemCatalog;
 import micheal65536.fountain.registry.JavaItems;
+import micheal65536.fountain.utils.AdventureChestLoot;
+import micheal65536.fountain.utils.AdventureChestLootSubscription;
 import micheal65536.fountain.utils.ChunkManager;
 import micheal65536.fountain.utils.EffectManager;
 import micheal65536.fountain.utils.EntityManager;
@@ -101,10 +108,13 @@ import micheal65536.fountain.utils.ItemTranslator;
 import micheal65536.fountain.utils.entities.ItemJavaEntityInstance;
 import micheal65536.fountain.utils.entities.LocalPlayerJavaEntityInstance;
 
+import java.io.Closeable;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
@@ -140,6 +150,10 @@ public final class PlayerSession
 	private boolean disconnected = false;
 	private boolean disconnecting = false;
 	private boolean disconnectIdSent = false;
+	private int adventureChestRarity = 6;
+	private volatile Vector3i lastBrokenBlock;
+	private Map<String, Integer> adventureChestLoot;
+	private Closeable adventureChestLootSubscription;
 
 	// V2 instance/dimension routing
 	private String instanceId;
@@ -271,6 +285,18 @@ public final class PlayerSession
 			}
 		}
 
+		if (this.adventureChestLootSubscription != null)
+		{
+			try
+			{
+				this.adventureChestLootSubscription.close();
+			}
+			catch (IOException exception)
+			{
+				// empty
+			}
+		}
+
 		this.java.disconnect("");
 
 		this.disconnectCallback.accept(this);
@@ -353,8 +379,16 @@ public final class PlayerSession
 	{
 		GenoaDisconnectIdPacket genoaDisconnectIdPacket = new GenoaDisconnectIdPacket();
 		this.inventoryManager.getCollectedItems().forEach((uuid, count) -> genoaDisconnectIdPacket.getKilledMobs().add(new GenoaDisconnectItem1(2, count, UUID.fromString(uuid))));
-		genoaDisconnectIdPacket.setSInt1(6);
+		synchronized (this)
+		{
+			if (this.adventureChestLoot != null)
+			{
+				this.adventureChestLoot.forEach((uuid, count) -> genoaDisconnectIdPacket.getDisconnectItems3().add(new GenoaDisconnectItem3(UUID.fromString(uuid), count)));
+			}
+		}
+		genoaDisconnectIdPacket.setSInt1(this.adventureChestRarity);
 		genoaDisconnectIdPacket.setHasDied(hasDied);
+		LogManager.getLogger().info("End screen: collected {}, chest rarity {} with {}, died {}", genoaDisconnectIdPacket.getKilledMobs().size(), this.adventureChestRarity, genoaDisconnectIdPacket.getDisconnectItems3(), hasDied);
 		this.sendBedrockPacketImmediately(genoaDisconnectIdPacket);
 		this.disconnectIdSent = true;
 	}
@@ -924,6 +958,7 @@ public final class PlayerSession
 				{
 					this.effectManager.sendBlockHit(packet.getBlockPosition(), bedrockBlockId, packet.getBlockFace());
 				}
+				this.lastBrokenBlock = packet.getBlockPosition();
 				ServerboundPlayerActionPacket serverboundPlayerActionPacket = new ServerboundPlayerActionPacket(PlayerAction.START_DIGGING, packet.getBlockPosition(), Direction.VALUES[packet.getBlockFace()], 0);
 				this.sendJavaPacket(serverboundPlayerActionPacket);
 			}
@@ -949,6 +984,7 @@ public final class PlayerSession
 
 	public void playerBreakBlock(@NotNull Vector3i position, int face)
 	{
+		this.lastBrokenBlock = position;
 		ServerboundPlayerActionPacket serverboundPlayerActionPacket = new ServerboundPlayerActionPacket(PlayerAction.START_DIGGING, position, Direction.VALUES[face], 0);
 		this.sendJavaPacket(serverboundPlayerActionPacket);
 	}
@@ -1050,6 +1086,80 @@ public final class PlayerSession
 
 			ServerboundSetCarriedItemPacket serverboundSetCarriedItemPacket = new ServerboundSetCarriedItemPacket(this.bedrockSelectedHotbarSlot);
 			this.sendJavaPacket(serverboundSetCarriedItemPacket);
+		}
+	}
+
+	public void followAdventureChestLoot(@NotNull String eventBusAddress, @NotNull String instanceId, @NotNull String playerId)
+	{
+		this.adventureChestLootSubscription = new AdventureChestLootSubscription(eventBusAddress, instanceId, loot ->
+		{
+			if (AdventureChestLoot.samePlayer(loot.playerId, playerId))
+			{
+				this.onAdventureChestLoot(loot);
+			}
+		});
+	}
+
+	public void onAdventureChestLoot(@NotNull AdventureChestLoot loot)
+	{
+		LogManager.getLogger().info("Adventure chest ({}) gave {}", loot.rarity, loot.items);
+		synchronized (this)
+		{
+			if (this.adventureChestLoot == null)
+			{
+				this.adventureChestLoot = new LinkedHashMap<>();
+			}
+			loot.items.forEach((uuid, count) -> this.adventureChestLoot.merge(uuid, count, Integer::sum));
+		}
+		this.onAdventureChestRemoved(loot.rarity);
+		this.sendAdventureChestAward(loot);
+	}
+
+	private void sendAdventureChestAward(@NotNull AdventureChestLoot loot)
+	{
+		if (!Arrays.asList("common", "uncommon", "rare", "epic", "legendary").contains(loot.rarity))
+		{
+			return;
+		}
+
+		GenoaItemAwardedNotificationPacket packet = new GenoaItemAwardedNotificationPacket();
+		packet.setString1("ar.award.adventure_complete");
+		packet.setString2("textures/ui/icons/graphic_icons/adventure_chest_" + loot.rarity);
+		packet.setString3("adventure.cue.chest." + loot.rarity + ".break");
+		packet.setArr(loot.items.entrySet().stream()
+				.map(entry -> new GenoaItemAwardedNotification(2, entry.getValue(), UUID.fromString(entry.getKey())))
+				.toArray(GenoaItemAwardedNotification[]::new));
+		this.sendBedrockPacket(packet);
+		LogManager.getLogger().info("Sent the adventure chest award ({}) with {} items", loot.rarity, packet.getArr().length);
+	}
+
+	public void onAdventureChestBlockRemoved(@NotNull String rarity, @NotNull Vector3i position)
+	{
+		if (position.equals(this.lastBrokenBlock))
+		{
+			String catalogUuid = EarthItemCatalog.getUUID("minecraft:adventure_chest_" + rarity, 0);
+			if (catalogUuid != null)
+			{
+				GenoaBlockDestroyPacket genoaBlockDestroyPacket = new GenoaBlockDestroyPacket();
+				genoaBlockDestroyPacket.setRuntimeEntityId(this.javaPlayerEntityInstance.bedrockEntityInstance.getInstanceId());
+				genoaBlockDestroyPacket.setItemCatalogUuid(UUID.fromString(catalogUuid));
+				this.sendBedrockPacket(genoaBlockDestroyPacket);
+				LogManager.getLogger().info("Player broke the adventure chest ({}) at {}", rarity, position);
+			}
+			else
+			{
+				LogManager.getLogger().warn("No catalog item for adventure chest {}", rarity);
+			}
+		}
+		this.onAdventureChestRemoved(rarity);
+	}
+
+	public void onAdventureChestRemoved(@NotNull String rarity)
+	{
+		int rarityIndex = Arrays.asList("common", "uncommon", "rare", "epic", "legendary").indexOf(rarity);
+		if (rarityIndex >= 0)
+		{
+			this.adventureChestRarity = rarityIndex;
 		}
 	}
 

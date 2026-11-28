@@ -148633,7 +148633,13 @@
     "name": "minecraft:ochre_froglight[axis=x]",
     "id": 26563,
     "bedrock": {
-      "ignore": true
+      "name": "minecraft:adventure_chest_common",
+      "state": {
+        "facing_direction": 0
+      },
+      "block_entity": {
+        "type": "adventure_chest"
+      }
     }
   },
   {
@@ -148647,7 +148653,13 @@
     "name": "minecraft:ochre_froglight[axis=z]",
     "id": 26565,
     "bedrock": {
-      "ignore": true
+      "name": "minecraft:adventure_chest_uncommon",
+      "state": {
+        "facing_direction": 0
+      },
+      "block_entity": {
+        "type": "adventure_chest"
+      }
     }
   },
   {
@@ -151328,7 +151340,13 @@
     "name": "minecraft:pearlescent_froglight[axis=x]",
     "id": 26569,
     "bedrock": {
-      "ignore": true
+      "name": "minecraft:adventure_chest_epic",
+      "state": {
+        "facing_direction": 0
+      },
+      "block_entity": {
+        "type": "adventure_chest"
+      }
     }
   },
   {
@@ -151342,7 +151360,13 @@
     "name": "minecraft:pearlescent_froglight[axis=z]",
     "id": 26571,
     "bedrock": {
-      "ignore": true
+      "name": "minecraft:adventure_chest_legendary",
+      "state": {
+        "facing_direction": 0
+      },
+      "block_entity": {
+        "type": "adventure_chest"
+      }
     }
   },
   {
@@ -234297,7 +234321,13 @@
     "name": "minecraft:verdant_froglight[axis=x]",
     "id": 26566,
     "bedrock": {
-      "ignore": true
+      "name": "minecraft:adventure_chest_rare",
+      "state": {
+        "facing_direction": 0
+      },
+      "block_entity": {
+        "type": "adventure_chest"
+      }
     }
   },
   {

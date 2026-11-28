@@ -19,6 +19,12 @@ public class BlockEntityTranslator
 	{
 		switch (blockEntityMapping.type)
 		{
+			case "adventure_chest":
+			{
+				NbtMapBuilder builder = NbtMap.builder();
+				builder.putString("id", "AdventureChest");
+				return builder.build();
+			}
 			case "bed":
 			{
 				NbtMapBuilder builder = NbtMap.builder();

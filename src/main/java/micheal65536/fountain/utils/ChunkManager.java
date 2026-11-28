@@ -375,11 +375,18 @@ public class ChunkManager
 			LogManager.getLogger().warn("Block update contained block with no mapping {}", JavaBlocks.getName(blockChangeEntry.getBlock(), this.fabricRegistryManager));
 		}
 
+		int previousBlock = chunk.getBlock(blockX, blockY, blockZ, 0);
 		boolean bedrockChanged = false;
 		if (chunk.setBlock(blockX, blockY, blockZ, 0, bedrockMapping != null ? bedrockMapping.id : REPLACEMENT_BLOCK))
 		{
 			bedrockChanged = true;
 			this.sendBlockUpdate(position, 0, chunk.getBlock(blockX, blockY, blockZ, 0));
+
+			String previousName = BedrockBlocks.getName(previousBlock);
+			if (previousName != null && previousName.startsWith("minecraft:adventure_chest_"))
+			{
+				this.playerSession.onAdventureChestBlockRemoved(previousName.substring("minecraft:adventure_chest_".length()), position);
+			}
 		}
 
 		if (chunk.setBlock(blockX, blockY, blockZ, 1, bedrockMapping != null && bedrockMapping.waterlogged ? BedrockBlocks.WATER : BedrockBlocks.AIR))
